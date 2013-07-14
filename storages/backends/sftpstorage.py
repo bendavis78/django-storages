@@ -239,11 +239,10 @@ class SFTPStorage(Storage):
 class SFTPStorageFile(File):
     def __init__(self, name, storage, mode):
         self.name = name
-        self._storage = storage
         self.mode = mode
-        self._is_dirty = False
-        self.file = StringIO()
-        self._is_read = False
+        self._remote_path = storage._remote_path(self.name)
+        self._storage = storage
+        self._is_read = True
 
     @property
     def size(self):
@@ -252,20 +251,16 @@ class SFTPStorageFile(File):
         return self._size
 
     def read(self, num_bytes=None):
-        if not self._is_read:
+        if not hasattr(self, 'file'):
             self.file = self._storage._read(self.name)
-            self._is_read = True
-
         return self.file.read(num_bytes)
 
     def write(self, content):
-        if 'w' not in self.mode:
-            raise AttributeError("File was opened for read-only access.")
-        self.file = StringIO(content)
-        self._is_dirty = True
-        self._is_read = True
+        if not 'w' in self.mode or 'a' in self.mode:
+            raise IOError("File not opened for writing")
+        if not hasattr(self, 'file'):
+            self.file = self._storage.sftp.open(self._remote_path, self.mode)
+        self.file.write(content)
 
     def close(self):
-        if self._is_dirty:
-            self._storage._save(self.name, self.file.getvalue())
         self.file.close()
